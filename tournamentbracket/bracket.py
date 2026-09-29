@@ -1,25 +1,39 @@
-"""淘汰赛对阵：轮空、种子与结果上报。
-
-缺陷：人数不是 2 的幂时不补轮空、同一场比赛可以重复上报覆盖结果。
-"""
+"""淘汰赛对阵：轮空、种子与结果上报。"""
 
 
 class BracketError(ValueError):
-    """输入不合法。缺陷：不带轮次下标。"""
+    """输入不合法。"""
 
     def __init__(self, message):
         super().__init__(message)
         self.message = message
 
 
+class Bracket(list):
+    """首轮对阵列表，附带已决出胜负的场次下标。"""
+
+    def __init__(self, pairs=()):
+        super().__init__(pairs)
+        self.decided = set()
+
+
 def build(players):
-    """生成首轮对阵。缺陷：只把落单的最后一人当轮空，不按 2 的幂补齐。"""
-    pairs = []
-    rest = list(players)
-    while len(rest) >= 2:
-        pairs.append((rest.pop(0), rest.pop(0)))
-    if rest:
-        pairs.append((rest.pop(0), None))
+    """生成首轮对阵：人数补到下一个 2 的幂，差额全部为轮空。"""
+    players = list(players)
+    if not players:
+        return Bracket()
+    size = 1
+    while size < len(players):
+        size *= 2
+    byes = size - len(players)
+    pairs = Bracket()
+    pos = 0
+    for _ in range((len(players) - byes) // 2):
+        pairs.append((players[pos], players[pos + 1]))
+        pos += 2
+    for _ in range(byes):
+        pairs.append((players[pos], None))
+        pos += 1
     return pairs
 
 
@@ -32,11 +46,16 @@ def bye_count(players):
 
 
 def report(pairs, index, winner):
-    """上报某场结果。缺陷：不校验该场是否已经结束，直接覆盖。"""
+    """上报某场结果：已分出胜负的场次拒绝重复上报。"""
     if index < 0 or index >= len(pairs):
         raise BracketError("没有这一场：%d" % index)
+    decided = getattr(pairs, "decided", None)
+    if decided is not None and index in decided:
+        raise BracketError("第 %d 场已经分出胜负" % index)
     first, second = pairs[index]
-    if winner not in (first, second):
-        raise BracketError("赢家不在这一场里：%s" % winner)
+    if winner is None or winner not in (first, second):
+        raise BracketError("第 %d 场没有这名赢家：%s" % (index, winner))
     pairs[index] = (winner, second if winner == first else first)
+    if decided is not None:
+        decided.add(index)
     return True
